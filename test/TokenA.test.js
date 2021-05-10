@@ -1,5 +1,5 @@
 const TokenA = artifacts.require("TokenA");
-const TokenB = artifacts.require("TokenA");
+const TokenB = artifacts.require("TokenB");
 const Swap = artifacts.require("TokenSwap");
 
 
@@ -54,7 +54,7 @@ contract("Token Test", async accounts => {
 
         const balance = await instanceB.balanceOf(User);
     
-        assert.equal(balance.valueOf(), 400, "mint failed");
+        assert.equal(balance.valueOf(), 400, "User balance is incorrect");
     });
 
     it('Test exchange B --> A', async () => {
@@ -79,6 +79,6 @@ contract("Token Test", async accounts => {
 
         const balance = await instanceA.balanceOf(User);
     
-        assert.equal(balance.valueOf(), expectedValue, "mint failed");
+        assert.equal(balance.valueOf(), expectedValue, "User balance is incorrect");
     });
 });
