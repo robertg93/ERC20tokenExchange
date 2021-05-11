@@ -24,16 +24,14 @@ contract TokenSwap is Ownable{
         price = newPrice;
     }
 
-    function depositTokenA(address user, uint256 amount) onlyOwner() public returns (bool){
-        return tokenA.transferFrom(user,_owner,amount);
-    }
-
+    // deposit token A or B on TokenSwap contract
     function deposit(address token, uint256 amount) onlyOwner() external {
         require(token == address(tokenA) || token == address(tokenB) , "Wrong token address");
         if(token == address(tokenA)) tokenA.transferFrom(msg.sender, address(this), amount);
         else tokenB.transferFrom(msg.sender, address(this), amount);
     }
 
+    // exchange tokens A <--> B at the token rate price 
     function exchange(address token, uint Amount ) public {
         require(token == address(tokenA) || token == address(tokenB) , "Wrong token address");
 

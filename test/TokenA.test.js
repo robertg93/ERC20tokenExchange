@@ -2,83 +2,134 @@ const TokenA = artifacts.require("TokenA");
 const TokenB = artifacts.require("TokenB");
 const Swap = artifacts.require("TokenSwap");
 
+var chai = require("chai");
 
-contract("Token Test", async accounts => {
+const BN = web3.utils.BN;
+const chaiBN = require('chai-bn')(BN);
+chai.use(chaiBN);
+
+var chaiAsPromised = require("chai-as-promised");
+chai.use(chaiAsPromised);
+
+const expect = chai.expect;
+
+
+contract('Test exchange A --> B', async accounts => {
     const [ initialHolder, User, depositAddress ] = accounts;
+    let tokenA
+    let tokenB
+    let tokenSwap
+    let deposit
+    const price = 10;
+    const exchangeAmount = 200;
+    const expectedValue = exchangeAmount*price;
+    const transferToUser = 10000;                        //should be higher than exchange amount
+    const depositAmount = 10000;                         //should be higher than expected value
+    const mintAmount = 100000;                           //should be higher than depositAmount and transferToUser
+    
+    
 
-    beforeEach(async () => {
-        this.tokenA = await TokenA.new(1000);
-        this.tokenB = await TokenB.new(1000);
-        this.swap = await Swap.new(this.tokenA.address, this.tokenB.address, 2)
+    before('setup contracts', async () => {
+        tokenA = await TokenA.new(0, {from: initialHolder});
+        tokenB = await TokenB.new(0, {from: initialHolder});
+        tokenSwap = await Swap.new(tokenA.address, tokenB.address, 2, {from: initialHolder})
+        deposit = tokenSwap.address;
         });
 
-
-    it('Should transfer 100 token to User', async () => {
-        const instance = this.tokenA;
-        const value = 100;
-        instance.transfer(User,value);
-        const balance = await instance.balanceOf(User);
+    it('Test mint on token A', async () => {
+        await tokenA.mint(initialHolder, mintAmount, {from: initialHolder});
+        let totalSupply = await tokenA.totalSupply();
     
-        assert.equal(balance.valueOf(), value, "Transfer to user failed");
+    expect(tokenA.balanceOf(initialHolder)).to.eventually.be.a.bignumber.equal(totalSupply);
     });
 
-    it('Set allowance', async () => {
-        const instance = this.tokenA;
-        const value = 10;
-        instance.approve(User,value);
-        const allowance = await instance.allowance(initialHolder, User);
+    it('Test mint on token B', async () => {
+        await tokenB.mint(initialHolder, mintAmount, {from: initialHolder});
+        let totalSupply = await tokenB.totalSupply();
     
-        assert.equal(allowance.valueOf(), value, "Setting allowance failed");
+    expect(tokenB.balanceOf(initialHolder)).to.eventually.be.a.bignumber.equal(totalSupply);
     });
 
-    it('Test exchange A --> B', async () => {
-        const instanceA = this.tokenA;
-        const instanceB = this.tokenB;
-        const instanceSwap = this.swap;
-        const deposit = this.swap.address;
-        const expectedValue = 400;
-
-        await instanceA.mint(initialHolder,10000,{from: initialHolder});
-        await instanceB.mint(initialHolder,10000,{from: initialHolder});
-
-        await instanceA.approve(this.swap.address, 400,{from: initialHolder});
-        await instanceB.approve(this.swap.address, 400,{from: initialHolder});
-
-        
-        await instanceSwap.deposit(this.tokenB.address,400,{from: initialHolder});
-        await instanceA.transfer(User,1000,{from: initialHolder});
-        await instanceSwap.updatePrice(4,{from: initialHolder})
-
-        await instanceA.approve(deposit, 100,{from: User});
-        await instanceSwap.exchange(this.tokenA.address,100,{from: User});
-
-        const balance = await instanceB.balanceOf(User);
+    it('Test allowance token A --> swapContract', async () => {
+        const transferAmount = new BN(depositAmount)
+        await tokenA.approve(deposit, depositAmount, {from: initialHolder});
     
-        assert.equal(balance.valueOf(), 400, "User balance is incorrect");
+    expect(tokenA.allowance(initialHolder,deposit)).to.eventually.be.a.bignumber.equal(transferAmount);
     });
 
-    it('Test exchange B --> A', async () => {
-        const instanceA = this.tokenA;
-        const instanceB = this.tokenB;
-        const instanceSwap = this.swap;
-        const deposit = this.swap.address;
-        const expectedValue = 50;
+    it('Test allowance token B --> swapContract', async () => {
+        const transferAmount = new BN(depositAmount)
+        await tokenB.approve(deposit, depositAmount, {from: initialHolder});
+    
+    expect(tokenB.allowance(initialHolder,deposit)).to.eventually.be.a.bignumber.equal(transferAmount);
+    });
 
-        await instanceA.mint(initialHolder,10000,{from: initialHolder});
-        await instanceB.mint(initialHolder,10000,{from: initialHolder});
+    it('Test ballance of swapContract', async () => {
+        const transferAmount = new BN(depositAmount)
+        await tokenSwap.deposit(tokenB.address,depositAmount, {from: initialHolder});
+    
+    expect(tokenB.balanceOf(deposit)).to.eventually.be.a.bignumber.equal(transferAmount);
+    });
 
-        await instanceA.approve(this.swap.address, 200,{from: initialHolder});
-        await instanceB.approve(this.swap.address, 200,{from: initialHolder});
+    it('Test transfer from initialHolder to User', async () => {
+        const transferAmount = new BN(transferToUser)
+        await tokenA.transfer(User, transferToUser, {from: initialHolder});
+    
+    expect(tokenA.balanceOf(User)).to.eventually.be.a.bignumber.equal(transferAmount);
+    });
 
-        
-        await instanceSwap.deposit(this.tokenA.address,200,{from: initialHolder});
-        await instanceB.transfer(User,1000,{from: initialHolder});
-
-        await instanceB.approve(deposit, 100,{from: User});
-        await instanceSwap.exchange(this.tokenB.address,100,{from: User});
-
-        const balance = await instanceA.balanceOf(User);
+    it('Test if after all operations User will receive expected amount of token', async () => {
+        //set price
+        await tokenSwap.updatePrice(price, {from: initialHolder});
+        //set allowance User --> deposit
+        await tokenA.approve(deposit, exchangeAmount, {from: User});
+        // User changes token A --> token B
+        await tokenSwap.exchange(tokenA.address,exchangeAmount, {from: User});
+        const balance = await tokenB.balanceOf(User);
     
         assert.equal(balance.valueOf(), expectedValue, "User balance is incorrect");
+    });
+});
+
+
+contract("Test exchange B --> A", async accounts => {
+    const [ initialHolder, User, depositAddress ] = accounts;
+    let tokenA
+    let tokenB
+    let tokenSwap
+
+    before('setup contracts', async () => {
+        tokenA = await TokenA.new(0, {from: initialHolder});
+        tokenB = await TokenB.new(0, {from: initialHolder});
+        tokenSwap = await Swap.new(tokenA.address, tokenB.address, 2, {from: initialHolder})
+        });
+
+    it('Test exchange B --> A', async () => {
+        const deposit = tokenSwap.address;
+        const price = 4;
+        const exchangeAmount = 200;
+        const expectedValue = exchangeAmount*price;
+        const transferToUser = 10000;                        //should be higher than exchange amount
+        const depositAmount = 10000;                         //should be higher than expected value
+        const mintAmount = 100000;                           //should be higher than depositAmount and transferToUser
+
+        //set price 
+        await tokenSwap.updatePrice(price, {from: initialHolder});
+        //mint token A
+        await tokenA.mint(initialHolder,mintAmount, {from: initialHolder});
+        //mint token B
+        await tokenB.mint(initialHolder,mintAmount, {from: initialHolder});
+        //set allowance tokenA --> deposit
+        await tokenA.approve(deposit, depositAmount, {from: initialHolder});
+        //send token A to deposit 
+        await tokenSwap.deposit(tokenA.address,depositAmount, {from: initialHolder});
+        //transfer some amount of tokens to User
+        await tokenB.transfer(User, transferToUser, {from: initialHolder});
+        //set allowance User --> deposit
+        await tokenB.approve(deposit, exchangeAmount,{from: User});
+        // User changes token B --> token A
+        await tokenSwap.exchange(tokenB.address,exchangeAmount, {from: User});
+
+        expect(tokenA.balanceOf(User)).to.eventually.be.a.bignumber.equal(expectedValue);
     });
 });
